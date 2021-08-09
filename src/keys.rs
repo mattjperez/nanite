@@ -1,24 +1,34 @@
-// public key
-// privkey > ED25519 => pubkey
-//
-// public addr = pubkey > base32 encoder
-
 use blake2::digest::{Update, VariableOutput};
 use blake2::VarBlake2b;
 use hex;
+use uuid;
 
 /// local UUID used to reference a specific wallet
 /// only useful in conjunction with a node's internal database file
-pub struct WalletID(Vec<u8>);
+///
+/// # TODO
+/// check for uuid crate
+///
+use uuid::Uuid;
+pub struct WalletId(Uuid);
 
+impl WalletId {
+    fn new() -> Self {
+        WalletId(Uuid::new_v4())
+    }
+}
+
+/// Vector of 32bytes
 /// Deterministically derived from Seed
-
 #[derive(Debug)]
-pub struct PrivateKey(Vec<u8>);
+pub struct PrivateKey {
+    key: Vec<u8>,
+    index: Option<u32>,
+}
 
 impl PartialEq for PrivateKey {
     fn eq(&self, other: &Self) -> bool {
-        self.0 == other.0
+        self.key == other.key
     }
 }
 
@@ -26,7 +36,7 @@ impl Eq for PrivateKey {}
 
 impl PrivateKey {
     fn to_pubkey(&self) -> PublicKey {
-        // ED25519(self.0.to_owned()) -> PublicKey
+        // ED25519(self.key.to_owned()) -> PublicKey
         todo!();
     }
 }
@@ -34,15 +44,41 @@ impl PrivateKey {
 /// Derived from PrivateKey using ED25519
 /// 32bytes, 64 upper-hex
 pub struct PublicKey(Vec<u8>);
+// privkey > ED25519 => pubkey
+
+pub struct PublicAddress(String);
+// public addr = pubkey > base32 encoder
+
+pub struct MnemonicStruct(Vec<String>);
+use bip39;
+
+trait ToMnemonic {
+    fn to_mnemonic() {
+        let mnemonic = bip39::Mnemonic::new(bip39::MnemonicType::Words12, bip39::Language::English);
+        let phrase: &str = mnemonic.phrase();
+        todo!();
+    }
+}
 
 pub trait ToPrivKey {
     fn to_key(&self, index: u32) -> PrivateKey;
 }
 
-pub trait ToMnemonic {
-    fn to_mnemonic() {
-        todo!();
-    }
+pub trait ToPubKey {
+    fn to_pubkey() -> PublicKey;
+}
+
+enum AddressPath {
+    BIP32,
+    BIP44,
+}
+
+pub trait BIP44 {
+    fn to_bip44();
+}
+
+pub trait BIP39 {
+    fn to_bip39(&self, index: u32) -> MnemonicStruct;
 }
 
 /// Series of 32 random bytes of data, represented as a 64 char, uppercase-hex string (0-9A-F)
@@ -55,7 +91,7 @@ pub struct Seed(Vec<u8>);
 
 impl Seed {
     pub fn new(seed: &str) -> Self {
-        Seed(hex::decode(seed).expect("Error parsing hex string"))
+        Seed(hex::decode(seed).expect("Error Parsing Hex String"))
     }
 }
 
@@ -73,30 +109,49 @@ impl ToPrivKey for Seed {
         let mut hasher = VarBlake2b::new(32).unwrap(); // 32 byte output
         hasher.update(input);
         let output = hasher.finalize_boxed();
-        PrivateKey(output.to_vec())
+        PrivateKey {
+            key: output.to_vec(),
+            index: Some(index),
+        }
     }
 }
 
+impl BIP39 for PrivateKey {
+    //Privk[i] > bip39(`44'/165'/i'`) => mnemonic
+    fn to_bip39(&self, index: u32) -> MnemonicStruct {
+        todo!();
+    }
+}
 //Privk[i] > bip39(`44'/165'/i'`) => mnemonic
-//format!({seed}{i}) > blake2b(32) > bip39 => mnemonic
-//
-//format!({seed}{i}) > bip44 => mnemonic
+
+impl BIP39 for Seed {
+    //format!({seed}{i}) > blake2b(32) > bip39 => mnemonic
+    fn to_bip39(&self, index: u32) -> MnemonicStruct {
+        todo!();
+    }
+}
+impl BIP44 for Seed {
+    //format!({seed}{i}) > bip44 => mnemonic
+    fn to_bip44() {
+        todo!();
+    }
+}
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    const hex1: &str = "51c1df03bdae52b02268e973cb13ebcd";
-    const hex2: &str = "d91d04cca0545768190e547cb8dadd7a";
-    const hex3: &str = "6f4b1faa9ec2f4e41edfc3a97e5e0103";
-    const hex4: &str = "70d6aa8bdd75b91fb8508e59f1ee5992";
-    const hex5: &str = "027ef22aa0f809e4845897d7144c9ed1";
+    const HEX1: &str = "51c1df03bdae52b02268e973cb13ebcd";
+    const HEX2: &str = "d91d04cca0545768190e547cb8dadd7a";
+    const HEX3: &str = "6f4b1faa9ec2f4e41edfc3a97e5e0103";
+    const HEX4: &str = "70d6aa8bdd75b91fb8508e59f1ee5992";
+    const HEX5: &str = "027ef22aa0f809e4845897d7144c9ed1";
 
     #[test]
     fn same_seed_same_index() {
-        let seed1 = Seed::new(hex1);
+        let seed1 = Seed::new(HEX1);
         let hash1 = seed1.to_key(1);
 
-        let seed2 = Seed::new(hex1);
+        let seed2 = Seed::new(HEX1);
         let hash2 = seed2.to_key(1);
 
         assert_eq!(hash1, hash2);
@@ -104,10 +159,10 @@ mod tests {
 
     #[test]
     fn same_seed_diff_index() {
-        let seed1 = Seed::new(hex1);
+        let seed1 = Seed::new(HEX1);
         let hash1 = seed1.to_key(1);
 
-        let seed2 = Seed::new(hex1);
+        let seed2 = Seed::new(HEX1);
         let hash2 = seed2.to_key(2);
 
         assert_ne!(hash1, hash2);
@@ -115,10 +170,10 @@ mod tests {
 
     #[test]
     fn diff_seed_same_index() {
-        let seed1 = Seed::new(hex1);
+        let seed1 = Seed::new(HEX2);
         let hash1 = seed1.to_key(1);
 
-        let seed2 = Seed::new(hex2);
+        let seed2 = Seed::new(HEX3);
         let hash2 = seed2.to_key(1);
 
         assert_ne!(hash1, hash2);
@@ -126,10 +181,10 @@ mod tests {
 
     #[test]
     fn diff_seed_diff_index() {
-        let seed1 = Seed::new(hex1);
+        let seed1 = Seed::new(HEX4);
         let hash1 = seed1.to_key(1);
 
-        let seed2 = Seed::new(hex2);
+        let seed2 = Seed::new(HEX5);
         let hash2 = seed2.to_key(2);
 
         assert_ne!(hash1, hash2);
